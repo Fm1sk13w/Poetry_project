@@ -1,0 +1,10 @@
+setup.py
+poetry_project/__init__.py
+poetry_project/config.py
+poetry_project/models.py
+poetry_project/pipeline.py
+poetry_project.egg-info/PKG-INFO
+poetry_project.egg-info/SOURCES.txt
+poetry_project.egg-info/dependency_links.txt
+poetry_project.egg-info/requires.txt
+poetry_project.egg-info/top_level.txt
