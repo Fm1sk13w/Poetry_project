@@ -38,3 +38,28 @@ def load_author_checkpoints() -> List[Author]:
             # Corrupted or incompatible pickle; skip
             continue
     return authors
+
+def clean_authors_dataset(authors: List[Author]) -> List[Author]:
+    """
+    Remove authors without poems and deduplicate by keeping the one
+    with the most poems.
+
+    Args:
+        authors: List of Author objects.
+
+    Returns:
+        Cleaned list of Author objects.
+    """
+    # 1. Remove authors with no poems
+    authors = [a for a in authors if a.poems]
+
+    # 2. Deduplicate by author name, keeping the one with more poems
+    unique_authors = {}
+    for author in authors:
+        if author.name not in unique_authors:
+            unique_authors[author.name] = author
+        else:
+            if len(author.poems) > len(unique_authors[author.name].poems):
+                unique_authors[author.name] = author
+
+    return list(unique_authors.values())

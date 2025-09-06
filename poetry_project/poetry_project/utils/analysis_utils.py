@@ -17,7 +17,8 @@ from functools import lru_cache
 import pronouncing
 
 from poetry_project.models import Author, Poem
-from poetry_project.utils.rhyme_utils import poem_has_rhymes
+from poetry_project.utils.rhyme_utils import poem_has_rhymes, rhyme_check
+from poetry_project.utils.linguistic_utils import adjectives_plus_adverbs_ratio
 
 
 # ---------------------------------------------------------------------------
@@ -35,28 +36,45 @@ def _rhyming_part(word: str) -> str | None:
     phones = _phones(word)
     return pronouncing.rhyming_part(phones[0]) if phones else None
 
-def _rhyme_density_all_words(poem: Poem) -> float:
-    """
-    Calculate rhyme density across all words in a poem.
+import re
+from typing import Set
 
-    Rhyme density = fraction of words that share a rhyming part
-    with at least one other word in the same poem.
+def rhyme_density_local_all_words(poem, window: int = 4) -> float:
     """
-    words = re.findall(r"\b\w+\b", poem.content.lower())
-    if len(words) < 2:
+    Calculate rhyme density for all words in a poem, checking only the next `window` lines.
+
+    Args:
+        poem: Poem object with a `.content` attribute (string).
+        window: Number of subsequent lines to check for rhymes.
+
+    Returns:
+        Ratio of rhyming words to total words in the poem.
+    """
+    # Split into lines and extract words
+    lines = [l.strip() for l in poem.content.split("\n") if l.strip()]
+    tokenized_lines = [
+        re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ']+", line.lower()) for line in lines
+    ]
+
+    total_words = sum(len(words) for words in tokenized_lines)
+    if total_words == 0:
         return 0.0
 
-    rhyme_parts = [_rhyming_part(w) for w in words]
-    rhyming_groups: Dict[str, int] = {}
-    for rp in rhyme_parts:
-        if rp:
-            rhyming_groups[rp] = rhyming_groups.get(rp, 0) + 1
+    rhyming_words: Set[tuple[int, str]] = set()  # (line_index, word)
 
-    rhymed_word_count = sum(
-        count for count in rhyming_groups.values() if count > 1
-    )
+    for i, words in enumerate(tokenized_lines):
+        for w in words:
+            # Compare with words in the next `window` lines
+            for j in range(i + 1, min(i + 1 + window, len(tokenized_lines))):
+                for w2 in tokenized_lines[j]:
+                    if w2 == w:
+                        continue  # skip identical words
+                    if rhyme_check(w, w2):
+                        rhyming_words.add((i, w))
+                        rhyming_words.add((j, w2))
 
-    return rhymed_word_count / len(words)
+    return len(rhyming_words) / total_words
+
 
 
 # ---------------------------------------------------------------------------
@@ -78,6 +96,7 @@ def compute_author_metrics(
         - poem_count
         - constant_syllable_percentage
         - avg_rhyme_density_all_words (fraction of rhyming words in poems)
+        - avg_adjective_adverb_ratio (fraction of (adjectives+adverbs) in poems)
 
     Args:
         authors: List of Author instances.
@@ -100,6 +119,7 @@ def compute_author_metrics(
             rhyme_pct = 0.0
             constant_syllable_pct = 0.0
             avg_rhyme_density = 0.0
+            avg_adj_adv_ratio = 0.0
         else:
             rhymed = sum(
                 poem_has_rhymes(p, tolerance=rhyme_tolerance)
@@ -116,7 +136,11 @@ def compute_author_metrics(
             constant_syllable_pct = (constant_syllable_count / total_poems) * 100
 
             avg_rhyme_density = float(np.mean([
-                _rhyme_density_all_words(p) for p in author.poems
+                rhyme_density_local_all_words(p) for p in author.poems
+            ]))
+
+            avg_adj_adv_ratio = float(np.mean([
+            adjectives_plus_adverbs_ratio(p)[1] for p in author.poems
             ]))
 
         records.append({
@@ -127,7 +151,8 @@ def compute_author_metrics(
             "rhyme_percentage": rhyme_pct,
             "poem_count": total_poems,
             "constant_syllable_percentage": constant_syllable_pct,
-            "avg_rhyme_density_all_words": avg_rhyme_density
+            "avg_rhyme_density_all_words": avg_rhyme_density,
+            "avg_adjective_adverb_ratio": avg_adj_adv_ratio
         })
 
     return pd.DataFrame.from_records(records)
