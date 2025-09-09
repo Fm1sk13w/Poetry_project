@@ -1,6 +1,7 @@
 import pickle
 from pathlib import Path
-from typing import List
+from typing import List, Optional
+import pandas as pd
 
 from poetry_project.models import Author
 
@@ -39,16 +40,22 @@ def load_author_checkpoints() -> List[Author]:
             continue
     return authors
 
-def clean_authors_dataset(authors: List[Author]) -> List[Author]:
+def clean_authors_dataset(
+    authors: List["Author"],
+    n_bins: Optional[int] = None,
+    min_authors_per_bin: Optional[int] = None
+) -> List["Author"]:
     """
-    Remove authors without poems and deduplicate by keeping the one
-    with the most poems.
+    Remove authors without poems, deduplicate by keeping the one with the most poems,
+    and optionally filter out authors from time bins with fewer than a given number of authors.
 
     Args:
         authors: List of Author objects.
+        n_bins: If provided, number of time bins to split by birth_year for filtering.
+        min_authors_per_bin: If provided, minimum authors required per bin to keep it.
 
     Returns:
-        Cleaned list of Author objects.
+        Cleaned (and optionally filtered) list of Author objects.
     """
     # 1. Remove authors with no poems
     authors = [a for a in authors if a.poems]
@@ -62,4 +69,28 @@ def clean_authors_dataset(authors: List[Author]) -> List[Author]:
             if len(author.poems) > len(unique_authors[author.name].poems):
                 unique_authors[author.name] = author
 
-    return list(unique_authors.values())
+    cleaned_authors = list(unique_authors.values())
+
+    # 3. Optional filtering by bin representation
+    if n_bins is not None and min_authors_per_bin is not None:
+        # Keep only authors with valid birth_year
+        df = pd.DataFrame(
+            [(a, int(a.birth_year)) for a in cleaned_authors if a.birth_year and str(a.birth_year).isdigit()],
+            columns=["author_obj", "birth_year"]
+        )
+
+        if not df.empty:
+            # Assign bins
+            df["bin"] = pd.cut(df["birth_year"], bins=n_bins)
+
+            # Count authors per bin
+            bin_counts = df["bin"].value_counts()
+
+            # Keep only bins meeting the threshold
+            valid_bins = bin_counts[bin_counts >= min_authors_per_bin].index
+
+            # Filter authors
+            df = df[df["bin"].isin(valid_bins)]
+            cleaned_authors = df["author_obj"].tolist()
+
+    return cleaned_authors
