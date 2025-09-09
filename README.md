@@ -6,7 +6,7 @@ Key features:
 - **Data cleaning & structuring** into a unified format.
 - **Linguistic analysis**: rhyme density, adjective/adverb ratios, lexical richness, syllable counts, and more.
 - **Trend detection**: time-based patterns, nationality-specific vocabulary, and “trendy” words.
-- **Visualization**: plots for trends, comparisons, and statistical summaries.
+- **Visualization**: plots for trends, radar charts, comparisons, and statistical summaries.
 
 Instruction:
 1) Install dependencies
