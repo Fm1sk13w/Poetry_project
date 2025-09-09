@@ -14,11 +14,28 @@ class Author:
     """
     Represents a poet with metadata and a collection of poems.
     """
-    name: str
-    birth_year: Optional[str] = None
-    nationality: Optional[str] = None
-    poems: List[Poem] = field(default_factory=list)
+    def __init__(self, name, birth_year=None, nationality=None):
+            self.name = name
+            self.birth_year = birth_year
+            self.nationality = nationality
+            self.poems = []
+            
+    def get_poem_by_title(self, title: str):
+        """
+        Return the Poem object for this author matching the given title.
 
+        Args:
+            title: Poem title to search for (case-insensitive).
+
+        Returns:
+            Poem instance if found, else None.
+        """
+        title_lower = title.strip().lower()
+        return next(
+            (poem for poem in self.poems if poem.title.strip().lower() == title_lower),
+            None
+        )
+    
     def average_poem_length(self) -> float:
         """
         Calculate the average number of words per poem.
@@ -30,6 +47,15 @@ class Author:
             return 0.0
         total_words = sum(p.number_of_words for p in self.poems)
         return total_words / len(self.poems)
+    
+    def __str__(self):
+        """Return a human-readable summary of the author."""
+        return (
+            f"{self.name} — "
+            f"Birth year: {self.birth_year or 'Unknown'} | "
+            f"Nationality: {self.nationality or 'Unknown'} | "
+            f"Poems in database: {len(self.poems)}"
+        )
 
 
 @dataclass
