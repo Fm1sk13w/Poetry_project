@@ -10,12 +10,15 @@ Author: PoetryProjectBot
 
 from __future__ import annotations
 from typing import List, Optional
+from statsmodels.nonparametric.smoothers_lowess import lowess
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+import numpy as np
 
 from poetry_project.models import Author
 from poetry_project.utils.linguistic_utils import adjectives_plus_adverbs_ratio
+from poetry_project.utils.analysis_utils import detect_trendy_words
 
 # ---------------------------------------------------------------------------
 # Global style settings
@@ -74,6 +77,47 @@ def boxplot_poem_lengths(authors: List[Author], save_path: Optional[str] = None)
         plt.savefig(save_path, dpi=300)
     plt.show()
 
+import pandas as pd
+import matplotlib.pyplot as plt
+from typing import List
+
+def plot_poems_by_birth_year(authors: List["Author"], bins: int = 10):
+    """
+    Plot the number of poems in the dataset grouped by birth_year bins.
+
+    Args:
+        authors: List of Author objects with .birth_year and .poems.
+        bins: Number of bins to split birth_year into.
+    """
+    # Build DataFrame of (birth_year, poem_count)
+    data = [
+        (int(a.birth_year), len(a.poems))
+        for a in authors
+        if a.birth_year and str(a.birth_year).isdigit() and a.poems
+    ]
+    if not data:
+        raise ValueError("No valid birth_year and poem data found.")
+
+    df = pd.DataFrame(data, columns=["birth_year", "poem_count"])
+
+    # Bin by birth_year
+    df["year_bin"] = pd.cut(df["birth_year"], bins=bins)
+
+    # Aggregate total poems per bin
+    poems_per_bin = df.groupby("year_bin", observed=False)["poem_count"].sum()
+
+    # Plot
+    fig, ax = plt.subplots(figsize=(10, 6))
+    poems_per_bin.plot(kind="bar", ax=ax, color="skyblue", edgecolor="black")
+
+    ax.set_title(f"Number of Poems by Poets' Birth Year (binned into {bins} groups)", fontsize=14)
+    ax.set_xlabel("Birth Year Bin")
+    ax.set_ylabel("Number of Poems")
+    ax.grid(axis="y", linestyle="--", alpha=0.7)
+
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.show()
 
 def plot_trend_with_regression(
     df: pd.DataFrame,
@@ -254,3 +298,225 @@ def scatter_authors_by_metrics(
         plt.savefig(save_path, dpi=300)
     plt.show()
 
+def compare_poets_radar(
+    metrics_df: pd.DataFrame,
+    poet_a: str,
+    poet_b: str = None,
+    metrics: list = None,
+    title: str = None,
+    fill_alpha: float = 0.25,
+    show_average: bool = False
+):
+    """
+    Create a normalized radar chart comparing two poets (or poet vs average),
+    with optional third surface for dataset average.
+
+    All metrics are min-max scaled to [0, 1] across the dataset so that
+    differences in scale (e.g., poem length vs ratios) don't distort the shape.
+
+    Args:
+        metrics_df: DataFrame with 'author' column and metric columns.
+        poet_a: Name of the first poet (always shown).
+        poet_b: Name of the second poet. If None, compares poet_a to dataset average.
+        metrics: List of metric column names to compare. If None, uses all numeric columns
+                 except 'birth_year' and 'poem_count'.
+        title: Optional chart title.
+        fill_alpha: Transparency for filled areas.
+        show_average: If True, always plot dataset average as a third surface.
+    """
+    # Default metrics if not provided
+    if metrics is None:
+        metrics = [
+            col for col in metrics_df.select_dtypes(include=[np.number]).columns
+            if col not in ("birth_year", "poem_count")
+        ]
+
+    # Min-max normalize metrics to [0, 1]
+    norm_df = metrics_df.copy()
+    for col in metrics:
+        col_min, col_max = norm_df[col].min(), norm_df[col].max()
+        if col_max > col_min:
+            norm_df[col] = (norm_df[col] - col_min) / (col_max - col_min)
+        else:
+            norm_df[col] = 0.0  # constant column
+
+    # Get poet A's values
+    poet_a_row = norm_df.loc[norm_df["author"] == poet_a, metrics]
+    if poet_a_row.empty:
+        raise ValueError(f"Poet '{poet_a}' not found in metrics_df.")
+    poet_a_values = poet_a_row.iloc[0].values
+
+    # Get poet B's values or average
+    if poet_b:
+        poet_b_row = norm_df.loc[norm_df["author"] == poet_b, metrics]
+        if poet_b_row.empty:
+            raise ValueError(f"Poet '{poet_b}' not found in metrics_df.")
+        poet_b_values = poet_b_row.iloc[0].values
+        label_b = poet_b
+    else:
+        poet_b_values = norm_df[metrics].mean().values
+        label_b = "Dataset Average"
+
+    # Dataset average (for optional third surface)
+    avg_values = norm_df[metrics].mean().values
+
+    # Number of variables
+    num_vars = len(metrics)
+
+    # Angles for each axis
+    angles = np.linspace(0, 2 * np.pi, num_vars, endpoint=False).tolist()
+    angles += angles[:1]  # close the loop
+
+    # Values for plotting (repeat first value to close the shape)
+    values_a = poet_a_values.tolist() + poet_a_values[:1].tolist()
+    values_b = poet_b_values.tolist() + poet_b_values[:1].tolist()
+    values_avg = avg_values.tolist() + avg_values[:1].tolist()
+
+    # Create polar plot
+    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+
+    # Draw one axe per variable + add labels
+    plt.xticks(angles[:-1], metrics, fontsize=10)
+
+    # Draw ylabels
+    ax.set_rlabel_position(30)
+    plt.yticks([0.2, 0.4, 0.6, 0.8], ["0.2", "0.4", "0.6", "0.8"], color="grey", size=8)
+    plt.ylim(0, 1)
+
+    # Plot Poet A
+    ax.plot(angles, values_a, color="tab:blue", linewidth=2, label=poet_a)
+    ax.fill(angles, values_a, color="tab:blue", alpha=fill_alpha)
+
+    # Plot Poet B / Average
+    ax.plot(angles, values_b, color="tab:orange", linewidth=2, label=label_b)
+    ax.fill(angles, values_b, color="tab:orange", alpha=fill_alpha)
+
+    # Optional third surface for dataset average
+    if show_average and (poet_b is not None):
+        ax.plot(angles, values_avg, color="tab:green", linewidth=2, label="Dataset Average")
+        ax.fill(angles, values_avg, color="tab:green", alpha=fill_alpha)
+
+    # Title & legend
+    if title:
+        plt.title(title, size=14, y=1.1)
+    plt.legend(loc="upper right", bbox_to_anchor=(1.3, 1.1))
+
+    plt.show()
+
+
+def plot_word_trend(word: str, freq_df: pd.DataFrame, bin_edges):
+    """
+    Plot relative frequency of a word across time bins.
+
+    Args:
+        word: The word to plot.
+        freq_df: DataFrame from detect_trendy_words (with relative frequencies per bin).
+        bin_edges: List of bin edges from detect_trendy_words.
+    """
+    if word not in freq_df.index:
+        raise ValueError(f"Word '{word}' not found in frequency data.")
+
+    bins = [f"{int(bin_edges[i])}-{int(bin_edges[i+1])}" for i in range(len(bin_edges)-1)]
+    values = freq_df.loc[word].iloc[:len(bins)].values  # exclude std_dev column
+
+    plt.figure(figsize=(8, 5))
+    plt.plot(bins, values, marker="o", linewidth=2)
+    plt.title(f"Usage of '{word}' over time")
+    plt.xlabel("Time bin (by birth_year)")
+    plt.ylabel("Relative frequency")
+    plt.grid(True, linestyle="--", alpha=0.6)
+    plt.show()
+
+def plot_trend_with_lowess(
+    df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    hue: str = None,
+    frac: float = 0.3,
+    save_path: str = None
+) -> None:
+    """
+    Plot a scatterplot with LOWESS smoothing to visualize non-linear trends.
+
+    Args:
+        df: DataFrame containing the data.
+        x_col: Column name for x-axis.
+        y_col: Column name for y-axis.
+        hue: Optional column name for grouping by color.
+        frac: Fraction of data used for each LOWESS fit (controls smoothness).
+        save_path: Optional path to save the plot.
+    """
+    plt.figure(figsize=(10, 6))
+
+    if hue:
+        unique_groups = df[hue].dropna().unique()
+        palette = sns.color_palette("tab10", len(unique_groups))
+        for color, group in zip(palette, unique_groups):
+            subset = df[df[hue] == group]
+            sns.scatterplot(data=subset, x=x_col, y=y_col, color=color, alpha=0.6, label=group)
+            smoothed = lowess(subset[y_col], subset[x_col], frac=frac, return_sorted=True)
+            plt.plot(smoothed[:, 0], smoothed[:, 1], color=color, linewidth=2)
+    else:
+        sns.scatterplot(data=df, x=x_col, y=y_col, color="steelblue", alpha=0.6)
+        smoothed = lowess(df[y_col], df[x_col], frac=frac, return_sorted=True)
+        plt.plot(smoothed[:, 0], smoothed[:, 1], color="red", linewidth=2)
+
+    plt.xlabel(x_col.replace("_", " ").title())
+    plt.ylabel(y_col.replace("_", " ").title())
+    plt.title(f"LOWESS Trend of {y_col.replace('_', ' ').title()} vs {x_col.replace('_', ' ').title()}")
+    plt.grid(alpha=0.3)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+    plt.show()
+
+def plot_trend_with_rolling_average(
+    df: pd.DataFrame,
+    x_col: str,
+    y_col: str,
+    hue: str = None,
+    window: int = 10,
+    save_path: str = None
+) -> None:
+    """
+    Plot a scatterplot with a rolling average trend line.
+
+    Args:
+        df: DataFrame containing the data.
+        x_col: Column name for x-axis (should be sortable, e.g., year).
+        y_col: Column name for y-axis (numeric metric).
+        hue: Optional column name for grouping by color.
+        window: Window size for rolling average (in number of points).
+        save_path: Optional path to save the plot.
+    """
+    # Sort by x_col to ensure rolling works correctly
+    df_sorted = df.sort_values(by=x_col)
+
+    plt.figure(figsize=(10, 6))
+
+    if hue:
+        # Plot each group separately
+        unique_groups = df_sorted[hue].dropna().unique()
+        palette = sns.color_palette("tab10", len(unique_groups))
+        for color, group in zip(palette, unique_groups):
+            subset = df_sorted[df_sorted[hue] == group]
+            sns.scatterplot(data=subset, x=x_col, y=y_col, color=color, alpha=0.6, label=group)
+            rolling_avg = subset[y_col].rolling(window=window, center=True).mean()
+            plt.plot(subset[x_col], rolling_avg, color=color, linewidth=2)
+    else:
+        # Scatter all points
+        sns.scatterplot(data=df_sorted, x=x_col, y=y_col, color="steelblue", alpha=0.6)
+        rolling_avg = df_sorted[y_col].rolling(window=window, center=True).mean()
+        plt.plot(df_sorted[x_col], rolling_avg, color="red", linewidth=2, label=f"{window}-point rolling avg")
+
+    plt.xlabel(x_col.replace("_", " ").title())
+    plt.ylabel(y_col.replace("_", " ").title())
+    plt.title(f"Rolling Average Trend of {y_col.replace('_', ' ').title()} vs {x_col.replace('_', ' ').title()}")
+    plt.grid(alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300)
+    plt.show()
