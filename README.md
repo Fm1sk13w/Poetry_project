@@ -5,7 +5,7 @@ Key features:
 - **Automated scraping** of poems from https://poemanalysis.com/ and merging with authors data from https://www.wikidata.org/.
 - **Data cleaning & structuring** into a unified format.
 - **Linguistic analysis**: rhyme density, adjective/adverb ratios, lexical richness, syllable counts, and more.
-- **Trend detection**: time-based patterns, nationality-specific vocabulary, and “trendy” words.
+- **Trend detection**: time-based patterns, and “trendy” words.
 - **Visualization**: plots for trends, radar charts, comparisons, and statistical summaries.
 
 Instruction:
